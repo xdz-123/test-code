@@ -1,0 +1,21 @@
+2026-04-09 15:25:44,174 [INFO] ============================================================
+2026-04-09 15:25:44,175 [INFO] Starting Vulnerability Analysis Workflow
+2026-04-09 15:25:44,175 [INFO] ============================================================
+2026-04-09 15:25:44,175 [INFO] 
+[Stage 1] Extracting vulnerability paths from Excel
+2026-04-09 15:25:44,175 [INFO] Reading Excel file: targets.xlsx
+2026-04-09 15:25:44,186 [INFO] Excel content extracted (2541 chars)
+2026-04-09 15:25:44,190 [INFO] Calling LLM API (attempt 1/3)
+2026-04-09 15:25:44,797 [INFO] HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-04-09 15:26:30,933 [INFO] LLM response received (4778 chars)
+2026-04-09 15:26:30,934 [INFO] Parsing LLM response as JSON
+2026-04-09 15:26:30,936 [INFO] Saved: vuln_paths.json
+2026-04-09 15:26:30,936 [INFO] Found 4 vulnerabilities
+2026-04-09 15:26:30,936 [INFO] 
+[Stage 2] Extracting assembly code with IDA
+2026-04-09 15:26:30,937 [INFO] Starting IDA analysis: httpd
+2026-04-09 15:26:30,937 [INFO] IDA command: C:\Program Files\IDA Professional 9.3\idat.exe -A -SC:\Users\xudiz\Desktop\test-code\ida_extract.py httpd
+2026-04-09 15:26:32,389 [INFO] IDA stdout:
+
+2026-04-09 15:26:32,389 [ERROR] IDA analysis failed with code 1
+2026-04-09 15:26:32,389 [ERROR] IDA analysis failed

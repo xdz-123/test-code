@@ -1,0 +1,17 @@
+{
+  "llm": {
+    "api_key": "sk-d1493f47c2df41e086b85a37ea6b472c",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat",
+    "max_tokens": 4096,
+    "temperature": 0.1
+  },
+  "ida": {
+    "path": "C:\\Program Files\\IDA Professional 9.3\\idat.exe",
+    "timeout": 300
+  },
+  "paths": {
+    "excel_file": "targets.xlsx",
+    "binary_file": "httpd"
+  }
+}

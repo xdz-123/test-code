@@ -1,0 +1,106 @@
+{
+  "binary_file": "httpd",
+  "vulnerabilities": [
+    {
+      "vuln_id": "VULN_001",
+      "vuln_type": "缓冲区溢出",
+      "description": "在函数`GetParentControlInfo`中，通过`websGetVar(wp, \"mac\", &byte_794DF)`获取HTTP参数`mac`的值，并将其赋值给指针`src`。随后，代码通过`strcpy((char *)v5->mac_addr, src)`将`src`的内容复制到`v5->mac_addr`指向的缓冲区中。这里存在缓冲区溢出漏洞：`strcpy`函数在复制字符串时，不会检查目标缓冲区的大小，如果攻击者控制的`mac`参数长度超过了`v5->mac_addr`缓冲区的大小（根据结构体`parent_control_info`的上下文推断，其大小可能有限，例如可能是MAC地址的标准长度），就会导致缓冲区溢出，可能覆盖相邻的内存区域，进而可能引发程序崩溃或执行任意代码。漏洞的根源在于未对用户输入的`mac`参数进行长度验证就直接使用不安全的`strcpy`函数进行复制。",
+      "call_path": [
+        {
+          "function": "GetParentControlInfo",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "websGetVar",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "strcpy",
+          "address": null,
+          "note": null
+        }
+      ],
+      "trigger_conditions": "攻击者通过HTTP请求向目标设备发送一个`mac`参数，且该参数的长度超过目标缓冲区`v5->mac_addr`的大小。",
+      "input_vector": "HTTP参数`mac`"
+    },
+    {
+      "vuln_id": "VULN_002",
+      "vuln_type": "缓冲区溢出",
+      "description": "在函数R7WebsSecurityHandler中，存在从websGetVar获取用户输入并直接传递给strcpy的调用链。具体来说，在第0x27984地址的R7WebsSecurityHandler函数中，通过Var = websGetVar(wp, \"password\", &byte_794DF)获取HTTP参数'password'的值，然后直接使用strcpy(pcookie, Var)将获取到的值复制到局部数组pcookie中。pcookie数组大小为128字节，但websGetVar返回的用户输入长度未经过验证，如果输入的'password'参数长度超过127字节（加上结尾空字符），将导致缓冲区溢出，覆盖栈上的其他数据，可能造成代码执行或程序崩溃。strcpy函数本身不检查目标缓冲区大小，因此存在典型的缓冲区溢出漏洞。",
+      "call_path": [
+        {
+          "function": "R7WebsSecurityHandler",
+          "address": "0x27984",
+          "note": null
+        },
+        {
+          "function": "websGetVar",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "strcpy",
+          "address": null,
+          "note": null
+        }
+      ],
+      "trigger_conditions": "攻击者通过HTTP请求向目标设备发送一个`password`参数，且该参数的长度超过127字节（不含结尾空字符）。",
+      "input_vector": "HTTP参数`password`"
+    },
+    {
+      "vuln_id": "VULN_003",
+      "vuln_type": "格式字符串/内存读取",
+      "description": "函数compare_parentcontrol_time中存在格式字符串漏洞。该函数通过websGetVar获取HTTP参数'time'的值，并直接传递给__isoc99_sscanf函数，其格式字符串为'%[^-]-%s'。虽然格式字符串本身是硬编码的，但用户可控的输入v3被直接作为sscanf的第一个参数（输入字符串），而sscanf的格式字符串参数是固定的，这本身不构成典型的格式字符串漏洞。然而，问题在于后续的代码：在多个分支中，包括if条件不满足时、参数为空时以及函数末尾，都执行了websWrite(wp, *(char_t **)starttime)。这里starttime是一个字符数组，但代码错误地将其内容解释为指针（通过解引用），然后传递给websWrite。如果用户输入的'time'参数经过sscanf解析后，starttime中填充了特定字节（例如，通过精心构造的输入使starttime包含内存地址值），那么*(char_t **)starttime会将该内存地址处的数据作为字符串指针，可能导致信息泄露或崩溃。此外，如果sscanf解析失败，starttime可能未初始化，解引用未初始化的指针是未定义行为。因此，该漏洞是由于错误地将字符数组作为指针解引用导致的，可能造成格式字符串漏洞或内存读取漏洞。",
+      "call_path": [
+        {
+          "function": "compare_parentcontrol_time",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "websGetVar",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "__isoc99_sscanf",
+          "address": null,
+          "note": null
+        }
+      ],
+      "trigger_conditions": "攻击者通过HTTP请求向目标设备发送一个精心构造的`time`参数，使得`starttime`字符数组的内容可以被解释为一个有效的内存地址，并且该地址的内容可被`websWrite`读取。或者，攻击者发送一个导致`sscanf`解析失败的输入，使得未初始化的`starttime`被解引用。",
+      "input_vector": "HTTP参数`time`"
+    },
+    {
+      "vuln_id": "VULN_004",
+      "vuln_type": "缓冲区溢出",
+      "description": "该调用链存在缓冲区溢出漏洞。在函数 `set_device_name` 中，第1750行和第1751行连续调用了两次 `sprintf` 函数。\n1. 第一个 `sprintf(mib_name, \"client.devicename%s\", mac_addr);` 中，`mac_addr` 是 `lower_mac(dev_mac, mac_addr)` 的输出，长度固定为MAC地址格式（如 `aa:bb:cc:dd:ee:ff`，17字节），而目标缓冲区 `mib_name` 大小为128字节，风险较低。\n2. 第二个 `sprintf(mib_vlaue, \"%s\\t1\", dev_name);` 是真正的风险点。`dev_name` 参数来自 `formAddMacfilterRule` 函数中通过 `websGetVar(wp, \"devName\", &byte_794DF)` 获取的用户输入，且未进行任何长度限制。目标缓冲区 `mib_vlaue` 大小为256字节。如果攻击者通过HTTP参数 `devName` 传入超过255字节（考虑到格式字符串 `\"%s\\t1\"` 额外增加2字节）的字符串，将导致 `mib_vlaue` 缓冲区溢出，可能覆盖相邻内存，造成程序崩溃或执行任意代码。\n漏洞触发路径为：用户可控的 `devName` 参数 -> `websGetVar` -> `set_device_name` -> `sprintf(mib_vlaue, \"%s\\t1\", dev_name)`。虽然调用链中 `formAddMacfilterRule` 也调用了 `sprintf`，但该处目标缓冲区 `ret_buf` 大小为128字节，格式为固定字符串 `\"{\\\"errCode\\\":%d}\"`，风险较低。主要漏洞点在 `set_device_name` 函数中。",
+      "call_path": [
+        {
+          "function": "formAddMacfilterRule",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "websGetVar",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "set_device_name",
+          "address": null,
+          "note": null
+        },
+        {
+          "function": "sprintf",
+          "address": null,
+          "note": null
+        }
+      ],
+      "trigger_conditions": "攻击者通过HTTP请求向目标设备发送一个`devName`参数，且该参数的长度超过255字节（不含结尾空字符）。",
+      "input_vector": "HTTP参数`devName`"
+    }
+  ]
+}
