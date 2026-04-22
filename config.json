@@ -3,8 +3,11 @@
     "api_key": "sk-d1493f47c2df41e086b85a37ea6b472c",
     "base_url": "https://api.deepseek.com",
     "model": "deepseek-chat",
-    "max_tokens": 4096,
+    "max_tokens": 8192,
     "temperature": 0.1
+  },
+  "angr": {
+    "objdump_path": "objdump"
   },
   "ida": {
     "path": "C:\\Program Files\\IDA Professional 9.3\\idat.exe",
