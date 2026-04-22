@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(pip --version)",
+      "Bash(pip install:*)",
+      "Bash(objdump -d httpd)",
+      "Bash(where arm-linux-gnueabi-objdump:*)",
+      "Bash(pip show:*)",
+      "Bash(rm:*)"
+    ]
+  }
+}

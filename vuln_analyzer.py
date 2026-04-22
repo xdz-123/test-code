@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
 漏洞分析主控脚本
-使用LLM从Excel提取漏洞信息，调用IDA分析二进制，再用LLM分析汇编生成攻击指令
+使用LLM从Excel提取漏洞信息，调用angr+objdump分析二进制，再用LLM分析汇编生成攻击指令
 """
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+import angr
 from openai import OpenAI
 from openpyxl import load_workbook
 from pydantic import BaseModel, Field
@@ -114,12 +116,13 @@ class LLMClient:
         """调用LLM API，带重试机制"""
         for attempt in range(max_retries):
             try:
-                logger.info(f"Calling LLM API (attempt {attempt + 1}/{max_retries})")
+                logger.info(f"Calling LLM API (attempt {attempt + 1}/{max_retries}, prompt: {len(prompt)} chars)")
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=self.max_tokens,
-                    temperature=self.temperature
+                    temperature=self.temperature,
+                    timeout=120
                 )
                 result = response.choices[0].message.content.strip()
                 logger.info(f"LLM response received ({len(result)} chars)")
@@ -192,6 +195,228 @@ Excel内容：
         logger.info("Parsing LLM response as JSON")
         data = json.loads(json_str)
         return VulnPaths(**data)
+
+
+# ============ angr路径补全引擎 ============
+
+class PathCompletionEngine:
+    """使用angr CFG补全漏洞路径中的中间块"""
+
+    def __init__(self, proj: angr.Project):
+        self.proj = proj
+        self.cfg = proj.analyses.CFGFast()
+
+    def complete_path_robust(self, partial_path: List[int]) -> List[int]:
+        """补全路径，填充中间缺失的基本块"""
+        if not partial_path:
+            return partial_path
+        full_path = [partial_path[0]]
+        for i in range(len(partial_path) - 1):
+            start = partial_path[i]
+            end = partial_path[i + 1]
+            if self._has_direct_edge(start, end):
+                full_path.append(end)
+                continue
+            inter_blocks = self._get_blocks_between(start, end)
+            if inter_blocks:
+                full_path.extend(inter_blocks[1:])
+            else:
+                full_path.append(end)
+        return full_path
+
+    def _has_direct_edge(self, src: int, dst: int) -> bool:
+        """检查两个地址间是否有直接边"""
+        src_node = self.cfg.model.get_any_node(src)
+        if src_node is None:
+            return False
+        return any(succ.addr == dst for succ in src_node.successors)
+
+    def _get_blocks_between(self, start: int, end: int) -> Optional[List[int]]:
+        """获取两个地址间的路径"""
+        func = self.cfg.kb.functions.function(addr=start)
+        if func is None or end not in [b.addr for b in func.blocks]:
+            return None
+        edges = {}
+        for block in func.blocks:
+            node = self.cfg.model.get_any_node(block.addr)
+            if node:
+                edges[block.addr] = [succ.addr for succ in node.successors
+                                    if succ.addr in [b.addr for b in func.blocks]]
+            else:
+                edges[block.addr] = []
+        queue = [(start, [start])]
+        visited = set()
+        while queue:
+            cur, path = queue.pop(0)
+            if cur == end:
+                return path
+            if cur in visited:
+                continue
+            visited.add(cur)
+            for succ in edges.get(cur, []):
+                if succ not in path:
+                    queue.append((succ, path + [succ]))
+        return None
+
+
+# ============ angr反汇编提取器 ============
+
+class AngrDisassembler:
+    """使用angr提取汇编代码"""
+
+    DANGEROUS_FUNCS = {
+        'strcpy', 'strcat', 'gets', 'memcpy', 'free',
+        'printf', 'fprintf', 'sprintf', 'snprintf', 'system'
+    }
+
+    def __init__(self, proj: angr.Project):
+        self.proj = proj
+
+    def extract_function_asm(self, func: angr.knowledge_plugins.Function) -> Tuple[List[AssemblyInstruction], List[str]]:
+        """提取函数的汇编指令"""
+        assembly = []
+        xrefs = []
+
+        try:
+            # 遍历函数的所有基本块
+            for block in func.blocks:
+                # 使用 angr 的反汇编
+                block_obj = self.proj.factory.block(block.addr, size=block.size)
+
+                for insn in block_obj.capstone.insns:
+                    # 格式化字节码
+                    bytes_hex = ' '.join(f'{b:02x}' for b in insn.bytes)
+
+                    # 格式化指令
+                    instruction = f"{insn.mnemonic} {insn.op_str}"
+
+                    assembly.append(AssemblyInstruction(
+                        address=f"0x{insn.address:08x}",
+                        instruction=instruction,
+                        bytes=bytes_hex
+                    ))
+
+                    # 检测危险函数调用（ARM: bl, blx; x86: call）
+                    if insn.mnemonic in ('bl', 'blx', 'call'):
+                        # 尝试解析目标地址
+                        target_addr = None
+                        if insn.op_str.startswith('0x'):
+                            target_addr = int(insn.op_str, 16)
+                        elif insn.op_str.startswith('#'):
+                            # ARM 立即数
+                            try:
+                                target_addr = int(insn.op_str[1:], 0)
+                            except:
+                                pass
+
+                        if target_addr:
+                            # 查找目标函数名
+                            target_func = self.proj.kb.functions.floor_func(target_addr)
+                            if target_func and target_func.name in self.DANGEROUS_FUNCS:
+                                xrefs.append(f"{target_func.name}@0x{insn.address:08x}")
+
+        except Exception as e:
+            # 某些块可能无法反汇编，跳过
+            pass
+
+        return assembly, xrefs
+
+
+# ============ angr控制器 ============
+
+class AngrController:
+    """使用angr进行二进制分析"""
+
+    def __init__(self, objdump_path: str = None):
+        # objdump_path 参数保留兼容性，但不再使用
+        pass
+
+    def analyze(self, binary_file: str, vuln_paths_file: str, output_file: str) -> bool:
+        """分析二进制文件并生成asm_code.json"""
+        logger.info(f"Starting angr analysis: {binary_file}")
+
+        try:
+            # 加载二进制
+            logger.info("Loading binary with angr...")
+            proj = angr.Project(binary_file, auto_load_libs=False)
+            path_engine = PathCompletionEngine(proj)
+            disassembler = AngrDisassembler(proj)
+
+            # 读取漏洞路径
+            with open(vuln_paths_file, 'r', encoding='utf-8') as f:
+                vuln_data = json.load(f)
+
+            # 获取架构信息
+            arch = proj.arch.name
+            logger.info(f"Architecture: {arch}")
+
+            # 构建输出数据
+            output_data = {
+                "binary_file": vuln_data.get("binary_file", ""),
+                "architecture": arch,
+                "vulnerabilities": []
+            }
+
+            # 处理每个漏洞
+            for vuln in vuln_data.get("vulnerabilities", []):
+                vuln_id = vuln.get("vuln_id", "UNKNOWN")
+                logger.info(f"Processing vulnerability: {vuln_id}")
+
+                vuln_result = {
+                    "vuln_id": vuln_id,
+                    "functions": []
+                }
+
+                # 提取调用路径中的地址
+                addresses = []
+                for path_item in vuln.get("call_path", []):
+                    addr_str = path_item.get("address")
+                    if addr_str:
+                        try:
+                            addr = int(addr_str, 16) if isinstance(addr_str, str) else addr_str
+                            addresses.append(addr)
+                        except:
+                            pass
+
+                # 如果有地址，补全路径
+                if addresses:
+                    completed_path = path_engine.complete_path_robust(addresses)
+                    logger.info(f"Path: {[hex(a) for a in completed_path]}")
+                else:
+                    completed_path = []
+
+                # 提取每个地址对应的函数汇编
+                processed_funcs = set()
+                for addr in completed_path:
+                    func = proj.kb.functions.floor_func(addr)
+                    if func and func.addr not in processed_funcs:
+                        processed_funcs.add(func.addr)
+
+                        # 提取汇编
+                        assembly, xrefs = disassembler.extract_function_asm(func)
+
+                        if assembly:
+                            func_result = {
+                                "name": func.name,
+                                "start_address": f"0x{func.addr:08x}",
+                                "assembly": [a.model_dump() for a in assembly],
+                                "xrefs_to": xrefs
+                            }
+                            vuln_result["functions"].append(func_result)
+                            logger.info(f"Extracted {len(assembly)} instructions from {func.name}")
+
+                output_data["vulnerabilities"].append(vuln_result)
+
+            # 写入输出文件
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Analysis complete: {output_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"angr analysis failed: {e}", exc_info=True)
+            return False
 
 
 # ============ IDA控制器 ============
@@ -293,9 +518,9 @@ class VulnAnalyzer:
             asm_summary.append(f"\n函数: {func.name} @ {func.start_address}")
             asm_summary.append(f"交叉引用: {', '.join(func.xrefs_to) if func.xrefs_to else '无'}")
             asm_summary.append("汇编代码:")
-            for inst in func.assembly[:50]:  # 限制指令数量
+            for inst in func.assembly[:30]:  # 限制指令数量，减少prompt大小
                 asm_summary.append(f"  {inst.address}: {inst.instruction}")
-            if len(func.assembly) > 50:
+            if len(func.assembly) > 30:
                 asm_summary.append(f"  ... (共{len(func.assembly)}条指令，已省略)")
 
         prompt = f"""你是二进制安全专家，分析{arch}汇编代码判断漏洞是否可触发。
@@ -324,9 +549,16 @@ class VulnAnalyzer:
 - exploitable: true表示可利用，false表示不可利用
 - confidence: high/medium/low
 - 如果exploitable为true，必须填写exploit字段
-- 如果exploitable为false，必须填写reason字段"""
+- 如果exploitable为false，必须填写reason字段
+- **重要**：payload字段不要输出实际的字节序列（如大量的AAAA...），只需要用文字描述payload的结构和长度，例如"200字节的'A'填充 + 0xdeadbeef返回地址"，保持简洁"""
 
         response = self.llm_client.call(prompt)
+
+        # 打印完整的原始响应用于调试
+        logger.info(f"=== LLM Raw Response for {vuln.vuln_id} ===")
+        logger.info(f"Response length: {len(response)} chars")
+        logger.info(f"Full response:\n{response}")
+        logger.info(f"=== End of Raw Response ===")
 
         # 提取JSON
         json_str = response
@@ -335,8 +567,21 @@ class VulnAnalyzer:
         elif "```" in response:
             json_str = response.split("```")[1].split("```")[0].strip()
 
-        data = json.loads(json_str)
-        return ExploitResult(**data)
+        try:
+            data = json.loads(json_str)
+            return ExploitResult(**data)
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Failed to parse LLM response for {vuln.vuln_id}: {e}")
+            logger.error(f"Extracted json_str length: {len(json_str)} chars")
+            logger.error(f"Extracted json_str:\n{json_str}")
+            # 返回失败结果而不是崩溃
+            return ExploitResult(
+                vuln_id=vuln.vuln_id,
+                exploitable=False,
+                confidence="low",
+                analysis="LLM响应解析失败",
+                reason=f"无法解析LLM输出: {str(e)}"
+            )
 
 
 # ============ 工作流协调器 ============
@@ -354,10 +599,11 @@ class WorkflowOrchestrator:
             temperature=config['llm']['temperature']
         )
         self.excel_parser = ExcelParser(self.llm_client)
-        self.ida_controller = IDAController(
-            ida_path=config['ida']['path'],
-            timeout=config['ida']['timeout']
-        )
+
+        # 使用angr替代IDA
+        objdump_path = config.get('angr', {}).get('objdump_path', 'objdump')
+        self.angr_controller = AngrController(objdump_path=objdump_path)
+
         self.vuln_analyzer = VulnAnalyzer(self.llm_client)
 
     def run(self):
@@ -381,18 +627,17 @@ class WorkflowOrchestrator:
             logger.info(f"Saved: {vuln_paths_file}")
             logger.info(f"Found {len(vuln_paths.vulnerabilities)} vulnerabilities")
 
-            # 阶段2: IDA分析提取汇编代码
-            logger.info("\n[Stage 2] Extracting assembly code with IDA")
-            script_path = os.path.abspath("ida_extract.py")
-            success = self.ida_controller.analyze(binary_file, script_path)
+            # 阶段2: angr分析提取汇编代码
+            logger.info("\n[Stage 2] Extracting assembly code with angr+objdump")
+            asm_code_file = "asm_code.json"
+            success = self.angr_controller.analyze(binary_file, vuln_paths_file, asm_code_file)
 
             if not success:
-                logger.error("IDA analysis failed")
+                logger.error("angr analysis failed")
                 return False
 
-            asm_code_file = "asm_code.json"
             if not os.path.exists(asm_code_file):
-                logger.error(f"IDA output file not found: {asm_code_file}")
+                logger.error(f"angr output file not found: {asm_code_file}")
                 return False
 
             with open(asm_code_file, 'r', encoding='utf-8') as f:
