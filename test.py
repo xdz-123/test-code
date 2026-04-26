@@ -13,16 +13,3 @@
             path_engine = PathCompletionEngine(proj)
             disassembler = AngrDisassembler(proj)
 
-            # 读取漏洞路径
-            with open(vuln_paths_file, 'r', encoding='utf-8') as f:
-                vuln_data = json.load(f)
-
-            # 获取架构信息
-            arch = proj.arch.name
-            logger.info(f"Architecture: {arch}")
-
-            # 构建输出数据
-            output_data = {
-                "binary_file": vuln_data.get("binary_file", ""),
-                "architecture": arch,
-                "vulnerabilities": []
