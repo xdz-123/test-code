@@ -675,7 +675,6 @@ class WorkflowOrchestrator:
 
 def main():
     """主入口"""
-    print('hello nigger!')
     # 加载配置
     config_file = "config.json"
     if not os.path.exists(config_file):
