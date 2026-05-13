@@ -1,0 +1,121 @@
+{
+  "binary_file": "httpd",
+  "architecture": "ARM-32",
+  "vulnerabilities": [
+    {
+      "vuln_id": "VULN-01",
+      "functions": [
+        {
+          "name": "GetParentControlInfo",
+          "start_address": "0x466F4",
+          "assembly": [
+            {
+              "address": "0x466F4",
+              "instruction": "PUSH            {R4-R11,LR}",
+              "bytes": "F04F2DE9"
+            },
+            {
+              "address": "0x466F8",
+              "instruction": "SUB             SP, SP, #0x3C",
+              "bytes": "3CD04DE2"
+            },
+            {
+              "address": "0x466FC",
+              "instruction": "ADD             R8, SP, #0x3C+day",
+              "bytes": "28808DE2"
+            },
+            {
+              "address": "0x46700",
+              "instruction": "MOV             R7, wp",
+              "bytes": "0070A0E1"
+            },
+            {
+              "address": "0x46704",
+              "instruction": "MOV             R6, #0",
+              "bytes": "0060A0E3"
+            },
+            {
+              "address": "0x46708",
+              "instruction": "ADD             R10, SP, #0x3C+var_4",
+              "bytes": "38A08DE2"
+            },
+            {
+              "address": "0x4670C",
+              "instruction": "BL              cJSON_CreateObject",
+              "bytes": "C093FFEB"
+            },
+            {
+              "address": "0x46710",
+              "instruction": "LDR             R11, =(aWlan0Mac+6 - 0x46734); \"mac\"",
+              "bytes": "E0B19FE5"
+            },
+            {
+              "address": "0x46714",
+              "instruction": "MOV             R2, #0x10; n",
+              "bytes": "1020A0E3"
+            },
+            {
+              "address": "0x46718",
+              "instruction": "MOV             R1, #0; c",
+              "bytes": "0010A0E3"
+            },
+            {
+              "address": "0x4671C",
+              "instruction": "MOV             R5, R0",
+              "bytes": "0050A0E1"
+            },
+            {
+              "address": "0x46720",
+              "instruction": "MOV             root, R8; s",
+              "bytes": "0800A0E1"
+            },
+            {
+              "address": "0x46724",
+              "instruction": "BL              memset",
+              "bytes": "A53BFFEB"
+            },
+            {
+              "address": "0x46728",
+              "instruction": "LDR             R2, =(unk_794DF - 0x46744)",
+              "bytes": "CC219FE5"
+            },
+            {
+              "address": "0x4672C",
+              "instruction": "ADD             R11, PC, R11; \"mac\"",
+              "bytes": "0BB08FE0"
+            },
+            {
+              "address": "0x46730",
+              "instruction": "MOV             R1, R11; var",
+              "bytes": "0B10A0E1"
+            },
+            {
+              "address": "0x46734",
+              "instruction": "MOV             R0, wp; wp",
+              "bytes": "0700A0E1"
+            },
+            {
+              "address": "0x46738",
+              "instruction": "STR             R6, [R10,#-0x14]!",
+              "bytes": "14602AE5"
+            },
+            {
+              "address": "0x4673C",
+              "instruction": "ADD             R2, PC, R2; unk_794DF ; defaultGetValue",
+              "bytes": "02208FE0"
+            },
+            {
+              "address": "0x46740",
+              "instruction": "BL              websGetVar",
+              "bytes": "DD78FFEB"
+            }
+          ],
+          "xrefs_to": [
+            "strcpy",
+            "sprintf"
+          ]
+        }
+      ]
+    }
+  ]
+}
