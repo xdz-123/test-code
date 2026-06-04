@@ -1,1 +1,0 @@
-python3 ida_controller.py /path/to/httpd /path/to/vuln_paths.json
