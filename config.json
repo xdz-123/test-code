@@ -1,6 +1,6 @@
 {
   "llm": {
-    "api_key": "sk-d1493f47c2df41e086b85a37ea6b472c",
+    "api_key": "sk-ab5f81e9e77c4b538188a14ad7e06236",
     "base_url": "https://api.deepseek.com",
     "model": "deepseek-chat",
     "max_tokens": 8192,
