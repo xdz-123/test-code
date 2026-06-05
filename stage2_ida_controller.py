@@ -3,7 +3,7 @@ import subprocess
 import os
 import sys
 
-def run_ida(target_binary, input_json, output_json, ida_path=r"D:\IDA Pro 9.3\idat.exe"):
+def run_ida(target_binary, input_json, output_json, ida_path=r"C:\\Program Files\\IDA Professional 9.3\\idat.exe"):
     env = os.environ.copy()
     env["ASM_INPUT_FILE"]  = os.path.abspath(input_json)
     env["ASM_OUTPUT_FILE"] = os.path.abspath(output_json)

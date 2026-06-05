@@ -52,7 +52,7 @@ def excel_to_vuln_json(excel_path: str, output_dir: str = '.', mode: str = 'comp
     """主解析函数"""
     if not os.path.exists(excel_path):
         print(f"❌ 文件不存在: {excel_path}")
-        print("💡 请将 Excel 文件重命名为 targets.xlsx 并放在当前目录")
+        print("[提示] 请将 Excel 文件重命名为 targets.xlsx 并放在当前目录")
         return
 
     os.makedirs(output_dir, exist_ok=True)
@@ -106,13 +106,47 @@ def excel_to_vuln_json(excel_path: str, output_dir: str = '.', mode: str = 'comp
     with open(compact_path, 'w', encoding='utf-8') as f:
         json.dump(compact_data, f, ensure_ascii=False, indent=2)
 
-    print(f"\n🎉 处理完成！共 {len(vulnerabilities)} 条漏洞")
-    print(f"   📁 完整版  → {full_path}   （详细描述，token 较多）")
-    print(f"   📁 精简版  → {compact_path} （推荐给 LLM，token 大幅减少）")
-    print(f"   💡 建议：直接使用 compact 版本喂给 LLM，可节省 60-80% token")
+    print(f"\n[完成] 处理完成！共 {len(vulnerabilities)} 条漏洞")
+    print(f"   [文件] 完整版  → {full_path}   （详细描述，token 较多）")
+    print(f"   [文件] 精简版  → {compact_path} （推荐给 LLM，token 大幅减少）")
+    print(f"   [提示] 建议：直接使用 compact 版本喂给 LLM，可节省 60-80% token")
+
+    # 生成 Stage 2 需要的 vuln_paths.json 格式
+    vuln_paths = {
+        "binary_file": "httpd",
+        "vulnerabilities": []
+    }
+
+    for idx, vuln in enumerate(vulnerabilities):
+        vuln_id_str = f"VULN-{idx+1:02d}"
+        call_path = [{"function": func, "address": ""} for func in vuln.get("trigger_path", [])]
+        vuln_type_map = {
+            "buffer_overflow": "Stack Overflow",
+            "format_string": "Format String",
+            "format_string_or_buffer_overflow": "Buffer Overflow / Format String",
+            "input_validation": "Input Validation",
+            "other": "Unknown"
+        }
+        vuln_type = vuln_type_map.get(vuln.get("vulnerability_type", "other"), "Unknown")
+        full_desc = vuln.get("full_description", "")
+        trigger_conditions = full_desc[:200] if full_desc else "需审计确认"
+        input_vector = "HTTP Request"
+
+        vuln_paths["vulnerabilities"].append({
+            "vuln_id": vuln_id_str,
+            "vuln_type": vuln_type,
+            "call_path": call_path,
+            "trigger_conditions": trigger_conditions,
+            "input_vector": input_vector
+        })
+
+    vuln_paths_path = os.path.join(output_dir, "vuln_paths.json")
+    with open(vuln_paths_path, "w", encoding="utf-8") as f:
+        json.dump(vuln_paths, f, ensure_ascii=False, indent=2)
+    print(f"   [文件] Stage2输入 → {vuln_paths_path} （IDA 提取汇编用）")
 
     # 推荐的 LLM 提示词模板（直接复制使用）
-    print("\n🔥 推荐 LLM 提示词模板（复制后直接用）：")
+    print("\n[推荐] 推荐 LLM 提示词模板（复制后直接用）：")
     print("=" * 60)
     print("""你是一位资深 IoT 固件安全研究员。
 以下是设备漏洞路径的结构化 JSON 数据：

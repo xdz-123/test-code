@@ -128,11 +128,25 @@ class Stage1Parser:
 
     def _parse_function(self, func: dict) -> dict:
         asmlines = func.get("assembly", [])
-        call_sites = self._extract_call_sites(asmlines)
         stack_frame = self._extract_stack_frame(asmlines)
         string_refs = self._extract_string_refs(asmlines)
         total = len(asmlines)
         truncated = (total == 40)
+
+        # 优先使用 Stage 2 IDA 提取的 external_calls（带 target_addr）
+        if func.get("external_calls"):
+            ext_calls = func["external_calls"]
+            # 转换为 Stage 3 内部格式（添加 is_websGetVar 标记）
+            for ec in ext_calls:
+                ec["is_websGetVar"] = (ec.get("target_name") == "websGetVar")
+            webs_calls = [{"call_addr": ec["call_addr"], "next_addr": ""} for ec in ext_calls if ec.get("target_name") == "websGetVar"]
+            indirect_calls = []
+        else:
+            # 回退：通过正则解析汇编
+            call_sites = self._extract_call_sites(asmlines)
+            ext_calls = call_sites["external_calls"]
+            webs_calls = call_sites["websGetVar_calls"]
+            indirect_calls = call_sites["indirect_calls"]
 
         return {
             "name": func.get("name", ""),
@@ -141,9 +155,9 @@ class Stage1Parser:
             "total_instructions": total,
             "truncated": truncated,
             "assembly": asmlines,
-            "external_calls": call_sites["external_calls"],
-            "websGetVar_calls": call_sites["websGetVar_calls"],
-            "indirect_calls": call_sites["indirect_calls"],
+            "external_calls": ext_calls,
+            "websGetVar_calls": webs_calls,
+            "indirect_calls": indirect_calls,
             "dangerous_xrefs": func.get("xrefs_to", []),
             "string_refs": string_refs
         }
@@ -415,25 +429,25 @@ class Stage2Analyzer:
         # 输出要求
         parts.append("")
         parts.append("=" * 60)
-        parts.append("## 分析要求（输出纯 JSON，不要包含 ```json 标记）")
+        parts.append("## 分析要求（输出纯 JSON，不要包含 ```json 标记，控制总长度在 1500 字以内）")
         parts.append("=" * 60)
         parts.append("""
 {
   "vuln_id": "VULN-01",
   "exploitability": "exploitable / not-exploitable / uncertain",
   "confidence": 0.85,
-  "root_cause": "中文描述漏洞根因。引用具体汇编地址、指令、寄存器和数据流（例如：在 0x46740 处调用 websGetVar 获取用户输入，返回值存入 R0，之后在 0xXXXXX 处将 R0 作为 src 参数传给 strcpy，而 dst 缓冲区位于栈上仅 XX 字节，可被溢出）。",
-  "data_flow": "完整的数据流追踪：输入源 → 寄存器/栈传递 → 危险函数调用",
-  "exploit_method": "详细利用方法，仅文字描述，不输出实际字节序列",
-  "payload_structure": "Payload 结构（如：偏移量 + 填充字节数 + 覆盖目标）",
-  "requirements": "利用该漏洞需要满足的前置条件（ASLR、栈保护、NX 等）",
-  "mitigation": "具体修复建议"
+  "root_cause": "简明描述根因（200字内），引用关键地址",
+  "data_flow": "简要数据流（150字内）",
+  "exploit_method": "简要利用方法（150字内）",
+  "payload_structure": "Payload 结构（100字内）",
+  "requirements": "前置条件（100字内）",
+  "mitigation": "修复建议（100字内）"
 }""")
 
         return '\n'.join(parts)
 
     def _parse_json_response(self, text: str) -> dict:
-        """解析 LLM 响应的 JSON，带降级策略"""
+        """解析 LLM 响应的 JSON，带降级策略（支持被截断的响应）"""
         if not text:
             raise ValueError("LLM 返回空响应")
 
@@ -457,15 +471,44 @@ class Stage2Analyzer:
             except json.JSONDecodeError:
                 pass
 
-        # 尝试3: 正则提取第一个 JSON 对象
-        m = re.search(r'\{[\s\S]*\}', text)
+        # 尝试3: 正则提取第一个 JSON 对象（支持不完整 JSON）
+        m = re.search(r'\{[\s\S]*', text)
         if m:
+            candidate = m.group(0)
+            # 尝试修复被截断的 JSON：补全缺失的引号和括号
             try:
-                return json.loads(m.group(0))
+                return json.loads(candidate)
             except json.JSONDecodeError:
-                pass
+                # 尝试修复：如果以未闭合的字符串结束，补全它
+                fixed = self._fix_truncated_json(candidate)
+                if fixed:
+                    try:
+                        return json.loads(fixed)
+                    except json.JSONDecodeError:
+                        pass
 
         raise ValueError(f"无法从 LLM 响应中解析 JSON: {text[:300]}...")
+
+    @staticmethod
+    def _fix_truncated_json(text: str) -> Optional[str]:
+        """尝试修复被截断的 JSON 字符串"""
+        # 统计未闭合的引号
+        quote_count = text.count('"') - text.count('\\"')
+        # 如果引号数量为奇数，说明字符串被截断
+        if quote_count % 2 == 1:
+            text += '"'
+
+        # 统计未闭合的括号
+        open_braces = text.count('{')
+        close_braces = text.count('}')
+        open_brackets = text.count('[')
+        close_brackets = text.count(']')
+
+        # 补全缺失的闭合符号
+        text += ']' * (open_brackets - close_brackets)
+        text += '}' * (open_braces - close_braces)
+
+        return text
 
     @staticmethod
     def render_report(results: list, binary_file: str, arch: str) -> str:
@@ -593,6 +636,47 @@ class VulnAnalyzerOrchestrator:
         self.logger.log(f"[WARN] 配置文件 {path} 不存在，使用空配置")
         return {}
 
+    @staticmethod
+    def _extract_stage4_targets(enriched_data: dict) -> list:
+        """
+        从 enriched 数据中提取 Stage 4 所需的拦截目标列表（Qiling hook 表）
+
+        输出格式（扁平数组）:
+        [
+            {"call_addr": 389288, "target_addr": 88088, "target_name": "strcpy"},
+            {"call_addr": 389300, "target_addr": 316384, "target_name": "set_wl_guest_qos_list"},
+            ...
+        ]
+
+        说明:
+        - call_addr: BL 调用指令的地址（十进制整数）
+        - target_addr: 被调用函数的实际地址（十进制整数）
+        - target_name: 函数名
+        """
+        def to_int(val):
+            if isinstance(val, int):
+                return val
+            if isinstance(val, str):
+                return int(val, 16) if val.startswith("0x") else int(val)
+            return 0
+
+        targets = []
+        for vuln in enriched_data.get("vulnerabilities", []):
+            for func in vuln.get("functions", []):
+                for ec in func.get("external_calls", []):
+                    try:
+                        call_addr = to_int(ec.get("call_addr", 0))
+                        target_addr = to_int(ec.get("target_addr", 0))
+                        target_name = ec.get("target_name", "unknown")
+                        targets.append({
+                            "call_addr": call_addr,
+                            "target_addr": target_addr,
+                            "target_name": target_name
+                        })
+                    except (ValueError, TypeError):
+                        continue
+        return targets
+
     def run(self):
         stage = self.args.stage
         enriched_path = self.args.enriched_input
@@ -604,6 +688,13 @@ class VulnAnalyzerOrchestrator:
                 enriched = parser.run()
                 Stage1Parser.save(enriched, enriched_path)
                 self.logger.log(f"[Stage 1] 富化数据已保存 → {enriched_path}")
+
+                # 生成 Stage 4 简化目标文件
+                stage4_targets = self._extract_stage4_targets(enriched)
+                stage4_path = self.args.stage4_targets
+                with open(stage4_path, 'w', encoding='utf-8') as f:
+                    json.dump(stage4_targets, f, indent=2, ensure_ascii=False)
+                self.logger.log(f"[Stage 1] Stage 4 目标文件已保存 → {stage4_path}")
             except Exception as e:
                 self.logger.log(f"[Stage 1] 失败: {e}")
                 self.logger.log(traceback.format_exc())
@@ -669,6 +760,8 @@ if __name__ == "__main__":
                         help="日志文件路径")
     parser.add_argument("--config", default="config.json",
                         help="LLM 配置文件")
+    parser.add_argument("--stage4-targets", default="stage4_targets.json",
+                        help="Stage 4 简化目标文件（函数名+地址+调用点）")
     args = parser.parse_args()
 
     orchestrator = VulnAnalyzerOrchestrator(args)

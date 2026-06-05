@@ -89,6 +89,37 @@ def get_dangerous_xrefs(func_ea):
                     xrefs.add(callee_name)
     return list(xrefs)
 
+
+# ---------- 提取函数内的所有外部调用（带目标地址） ----------
+def extract_external_calls(func_ea):
+    """
+    提取函数内所有 BL/BLX 调用指令，返回:
+    [{"call_addr": 0x..., "target_addr": 0x..., "target_name": "..."}, ...]
+    """
+    func = idaapi.get_func(func_ea)
+    if not func:
+        return []
+
+    calls = []
+    for head in idautils.Heads(func.start_ea, func.end_ea):
+        if not idaapi.is_code(idaapi.get_flags(head)):
+            continue
+        mnem = idc.print_insn_mnem(head)
+        if mnem not in ("BL", "BLX"):
+            continue
+        # 获取操作数（被调用函数）
+        for xref in idautils.XrefsFrom(head, idaapi.XREF_FAR):
+            if xref.type in (idaapi.fl_CN, idaapi.fl_CF):  # 代码近程/远程调用
+                target_ea = xref.to
+                target_name = idc.get_func_name(target_ea) or f"sub_{target_ea:X}"
+                calls.append({
+                    "call_addr": head,
+                    "target_addr": target_ea,
+                    "target_name": target_name
+                })
+                break  # 一个 BL 通常只有一个目标
+    return calls
+
 # ---------- 主处理逻辑 ----------
 with open(INPUT_JSON, 'r', encoding='utf-8') as f:
     vuln_data = json.load(f)
@@ -112,11 +143,13 @@ for vuln in vuln_data["vulnerabilities"]:
         trigger_addr = func_info.get("address")  # 可能为空
         asm_lines = extract_critical_asm(func.start_ea, trigger_addr)
         xrefs = get_dangerous_xrefs(func.start_ea)
+        ext_calls = extract_external_calls(func.start_ea)
         vuln_entry["functions"].append({
             "name": func_info["function"],
             "start_address": f"0x{func.start_ea:X}",
             "assembly": asm_lines,
-            "xrefs_to": xrefs
+            "xrefs_to": xrefs,
+            "external_calls": ext_calls
         })
     output["vulnerabilities"].append(vuln_entry)
 

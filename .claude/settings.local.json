@@ -7,7 +7,8 @@
       "Bash(objdump -d httpd)",
       "Bash(where arm-linux-gnueabi-objdump:*)",
       "Bash(pip show:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(python3 *)"
     ]
   }
 }
