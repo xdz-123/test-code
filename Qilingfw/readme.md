@@ -168,3 +168,6 @@ overflow = analyzer.verify_overflow(
 
 ## 📚 示例项目
 完整测试脚本 test_api.py 包含扫描、模糊测试和漏洞验证的示例，可参考.
+
+# 补充
+json文件格式参考上传的vuln_targets.json，已经对verifier.py进行了功能扩展.
