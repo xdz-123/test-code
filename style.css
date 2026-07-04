@@ -34,6 +34,123 @@ h1 {
     font-size: 1.1em;
 }
 
+/* 文件上传区域样式 */
+.upload-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.upload-box {
+    background: #1e293b;
+    border: 2px solid #475569;
+    border-radius: 16px;
+    padding: 30px 40px;
+    max-width: 900px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.upload-box h2 {
+    color: #fff;
+    margin-bottom: 25px;
+    font-size: 1.4em;
+}
+
+.upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .upload-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.upload-item {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: left;
+}
+
+.upload-label {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.upload-icon {
+    font-size: 2em;
+    flex-shrink: 0;
+}
+
+.upload-label strong {
+    color: #60a5fa;
+    display: block;
+    margin-bottom: 8px;
+    font-size: 1.1em;
+}
+
+.upload-desc {
+    color: #94a3b8;
+    font-size: 0.9em;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.upload-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-upload {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border: none;
+    padding: 10px 20px;
+    font-size: 0.95em;
+}
+
+.btn-upload:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-1px);
+}
+
+.upload-status {
+    font-size: 0.9em;
+    color: #4ade80;
+    display: none;
+}
+
+.upload-status.success {
+    display: inline;
+}
+
+.upload-status.error {
+    display: inline;
+    color: #f87171;
+}
+
+.upload-hint {
+    color: #64748b;
+    font-size: 0.9em;
+    margin-top: 15px;
+}
+
+.upload-hint code {
+    background: #1e3a5f;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #bae6fd;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
 /* 流水线样式 */
 .pipeline {
     background: #1e293b;

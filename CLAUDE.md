@@ -17,10 +17,27 @@ IoT 固件二进制漏洞分析平台，针对 ARM-32 架构的 `httpd` 二进�
 1. **Python 环境**：Python 3.8+
 2. **依赖安装**：
    ```bash
-   pip install openai
+   pip install flask flask-cors pandas openai
    ```
 3. **IDA Pro 9.3**：需要安装在 Windows，路径配置在 `config.json`
 4. **LLM API Key**：DeepSeek / Grok，配置在 `config.json`
+
+### 前端 Web 控制台使用
+
+本项目提供 Web 前端界面，方便一键运行各 Stage：
+
+```bash
+# 启动 Web 服务
+python web_server.py
+```
+
+浏览器访问 `http://localhost:5000`，即可看到可视化操作界面。
+
+**新手必读**（前端页面顶部有醒目标签）：
+- Excel 文件必须命名为 `targets.xlsx`
+- ARM-32 二进制文件必须命名为 `httpd`，放在项目根目录
+- 首次使用需安装上述依赖
+- 页面顶部有详细操作提示
 
 ### 完整运行流程
 

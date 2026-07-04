@@ -191,6 +191,39 @@ def get_report():
         return str(e), 500
 
 
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """上传文件（Excel 或二进制）"""
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "没有文件"}), 400
+
+    file = request.files['file']
+    file_type = request.form.get('type', '')
+
+    if file.filename == '':
+        return jsonify({"success": False, "error": "文件名为空"}), 400
+
+    # 根据类型决定保存文件名
+    if file_type == 'excel':
+        save_name = 'targets.xlsx'
+    elif file_type == 'bin':
+        save_name = 'httpd'
+    else:
+        return jsonify({"success": False, "error": "未知文件类型"}), 400
+
+    save_path = PROJECT_ROOT / save_name
+
+    try:
+        file.save(str(save_path))
+        return jsonify({
+            "success": True,
+            "message": f"文件已保存为 {save_name}",
+            "filename": save_name
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("漏洞分析系统 - Web 控制台")

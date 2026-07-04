@@ -160,8 +160,53 @@ function showTab(tabId) {
     event.target.classList.add('active');
 }
 
+// 上传文件
+async function uploadFile(type) {
+    const inputId = type === 'excel' ? 'excel-input' : 'bin-input';
+    const statusId = type === 'excel' ? 'excel-status' : 'bin-status';
+    const input = document.getElementById(inputId);
+    const statusEl = document.getElementById(statusId);
+
+    if (!input.files || input.files.length === 0) {
+        return;
+    }
+
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', type);
+
+    statusEl.textContent = '⏳ 上传中...';
+    statusEl.className = 'upload-status';
+    statusEl.style.display = 'inline';
+
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            statusEl.textContent = `✅ 已保存为 ${result.filename}`;
+            statusEl.className = 'upload-status success';
+            log(`${type === 'excel' ? 'Excel' : '二进制'}文件上传成功: ${result.filename}`, 'success');
+        } else {
+            throw new Error(result.error || '上传失败');
+        }
+    } catch (error) {
+        statusEl.textContent = `❌ ${error.message}`;
+        statusEl.className = 'upload-status error';
+        log(`文件上传失败: ${error.message}`, 'error');
+    }
+
+    // 清空 input，允许重复选择同一文件
+    input.value = '';
+}
+
 // 页面加载时自动检查文件状态
 window.addEventListener('load', () => {
     log('漏洞分析系统 Web 控制台已加载');
-    log('提示: 需要后端 API 支持才能实际运行 Stage');
+    log('提示: 先上传 Excel 和二进制文件，再运行各 Stage');
 });
