@@ -41,6 +41,8 @@ def run_script(script_args, cwd=None):
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=300  # 5分钟超时
         )
 
@@ -88,8 +90,14 @@ def run_stage(stage_num):
             "error": f"脚本不存在: {script_name}"
         }), 404
 
-    # 运行脚本
-    result = run_script([script_name])
+    # 运行脚本（各 Stage 需要不同参数）
+    if stage_num == 1:
+        script_args = [script_name, "--input", "targets.xlsx", "--output", ".", "--mode", "compact"]
+    elif stage_num == 2:
+        script_args = [script_name, "httpd", "vuln_paths.json"]
+    else:
+        script_args = [script_name]
+    result = run_script(script_args)
 
     if result["success"]:
         # 根据 Stage 确定输出文件
