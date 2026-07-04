@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>漏洞分析系统 - Web 控制台</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header>
+            <h1>🔍 IoT 固件漏洞分析平台</h1>
+            <p class="subtitle">ARM-32 httpd 二进制漏洞分析 · Stage 1-3 流水线</p>
+        </header>
+
+        <!-- 流水线可视化 -->
+        <section class="pipeline">
+            <h2>分析流水线</h2>
+            <div class="stages">
+                <div class="stage" id="stage1-card">
+                    <div class="stage-header">
+                        <span class="stage-number">1</span>
+                        <span class="stage-title">Excel 解析</span>
+                    </div>
+                    <div class="stage-body">
+                        <p class="stage-desc">解析 targets.xlsx → vuln_paths.json</p>
+                        <button class="btn btn-primary" onclick="runStage(1)">运行 Stage 1</button>
+                        <div class="stage-status" id="stage1-status"></div>
+                    </div>
+                </div>
+
+                <div class="stage-arrow">→</div>
+
+                <div class="stage" id="stage2-card">
+                    <div class="stage-header">
+                        <span class="stage-number">2</span>
+                        <span class="stage-title">IDA 汇编提取</span>
+                    </div>
+                    <div class="stage-body">
+                        <p class="stage-desc">IDA Pro 提取汇编 → asm_code.json</p>
+                        <button class="btn btn-primary" onclick="runStage(2)">运行 Stage 2</button>
+                        <div class="stage-status" id="stage2-status"></div>
+                    </div>
+                </div>
+
+                <div class="stage-arrow">→</div>
+
+                <div class="stage" id="stage3-card">
+                    <div class="stage-header">
+                        <span class="stage-number">3</span>
+                        <span class="stage-title">LLM 分析</span>
+                    </div>
+                    <div class="stage-body">
+                        <p class="stage-desc">预处理 + LLM 分析 → 报告</p>
+                        <div class="stage3-buttons">
+                            <button class="btn btn-secondary" onclick="runStage3Substage(1)">Stage 3.1 预处理</button>
+                            <button class="btn btn-secondary" onclick="runStage3Substage(2)">Stage 3.2 LLM</button>
+                        </div>
+                        <div class="stage-status" id="stage3-status"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 实时日志 -->
+        <section class="logs-section">
+            <div class="section-header">
+                <h2>实时日志</h2>
+                <button class="btn btn-small" onclick="clearLogs()">清空日志</button>
+            </div>
+            <div class="log-container" id="log-container">
+                <pre id="log-output">等待操作...</pre>
+            </div>
+        </section>
+
+        <!-- 结果展示 -->
+        <section class="results-section">
+            <div class="section-header">
+                <h2>分析结果</h2>
+                <div class="result-tabs">
+                    <button class="tab-btn active" onclick="showTab('json-tab')">JSON 结果</button>
+                    <button class="tab-btn" onclick="showTab('report-tab')">Markdown 报告</button>
+                    <button class="tab-btn" onclick="showTab('targets-tab')">Stage4 Targets</button>
+                </div>
+            </div>
+
+            <!-- JSON 结果 -->
+            <div id="json-tab" class="tab-content active">
+                <div class="result-actions">
+                    <button class="btn btn-small" onclick="loadResult('exploit_result.json')">加载 exploit_result.json</button>
+                </div>
+                <pre class="json-viewer" id="json-output">暂无数据</pre>
+            </div>
+
+            <!-- Markdown 报告 -->
+            <div id="report-tab" class="tab-content">
+                <div class="result-actions">
+                    <button class="btn btn-small" onclick="loadReport()">加载 exploit_result_report.md</button>
+                </div>
+                <div class="markdown-viewer" id="report-output">暂无数据</div>
+            </div>
+
+            <!-- Stage4 Targets -->
+            <div id="targets-tab" class="tab-content">
+                <div class="result-actions">
+                    <button class="btn btn-small" onclick="loadResult('stage4_targets.json')">加载 stage4_targets.json</button>
+                </div>
+                <pre class="json-viewer" id="targets-output">暂无数据</pre>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
